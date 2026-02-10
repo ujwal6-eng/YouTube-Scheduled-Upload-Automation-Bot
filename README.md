@@ -1,79 +1,87 @@
-# Automated Video Upload & Website Integration System
+# YouTube Scheduled Upload Automation Bot
 
 ## Overview
-This system automates the end-to-end handling of video uploads from a website to YouTube.
-It removes backend bandwidth pressure by uploading directly to external storage and processing asynchronously.
-Automation is used to publish videos and return metadata for seamless website embedding.
-
-The approach favors simple state transitions, observable processing, and minimal infrastructure.
+This system automates scheduled uploads of short-form videos to YouTube.
+Videos are sourced from Google Drive, metadata is consumed from a versioned text file, and publishing is scheduled without manual intervention.
+The design prioritizes deterministic behavior, auditability, and long-term unattended operation.
 
 ## Architecture
-Website
-↓
-Google Drive (Storage + Queue)
-↓
-GitHub Actions (Automation)
-↓
-YouTube (Private / Unlisted)
-↓
-Website Embed
+Google Drive (Pending Videos)
+        ↓
+GitHub Actions (Cron Trigger)
+        ↓
+Python Automation (main.py)
+        ↓
+YouTube Data API (Scheduled Upload)
+        ↓
+Google Drive (Uploaded Videos)
+        ↓
+GitHub Commit (Metadata Update)
 
-Videos flow from the website to storage, where automation claims and processes them.
-YouTube handles streaming, while the website only consumes metadata and embed links.
+The workflow is time-triggered, processes one video per run, and advances state only after a successful upload.
 
 ## Repository / Resource Structure
-/video-system
-- pending/        New uploads waiting for processing
-- processing/     Videos currently being handled
-- uploaded/       Successfully completed uploads
-- failed/         Failed uploads requiring review
+yt-upload-bot/
+├── .github/workflows/upload.yml
+├── main.py
+├── requirements.txt
+├── titles.txt
+└── README.md
 
-Folder placement represents system state.
-A file exists in only one folder at a time, making state explicit and traceable.
+Google Drive folders act as external state boundaries.
+The repository stores only automation logic and metadata.
 
 ## Workflow
-1. The website uploads a video directly to Google Drive.
-2. The file is placed into the pending folder as a queue entry.
-3. GitHub Actions detects and claims the next pending file.
-4. The file is moved to processing and uploaded to YouTube.
-5. Metadata is generated and sent back to the website.
-6. The file is finalized into uploaded or failed based on the result.
+1. GitHub Actions triggers the job based on a cron schedule.
+2. The repository is checked out into a clean runner.
+3. Python dependencies are installed.
+4. The first unused title line is read from titles.txt.
+5. One video is selected from the Drive pending folder.
+6. The video is uploaded to YouTube with a scheduled publish time.
+7. The video is moved to the Drive uploaded folder.
+8. The used title line is removed and committed.
 
 ## Automation Logic
-Automation is triggered by scheduled runs or manual dispatch.
-Each run processes a limited number of items to control rate limits.
-Folder transitions act as atomic state changes to maintain consistency.
+- Triggered exclusively by GitHub Actions cron.
+- One video processed per run.
+- FIFO metadata consumption.
+- No retries to avoid duplicate uploads.
+- Fail-fast behavior to preserve consistency.
 
 ## External Integrations
-- Google Drive  
-  Used for upload storage, queue management, and visual state tracking.
-- GitHub Actions  
-  Executes automation logic without requiring a persistent server.
-- YouTube Data API  
-  Publishes videos and provides streaming and embed capabilities.
+- Google Drive API: Lists, downloads, and moves video files.
+- YouTube Data API v3: Uploads videos and schedules publication.
+- GitHub Actions: Orchestration, scheduling, and execution environment.
 
 ## State & Metadata Handling
-State is tracked through folder placement rather than database flags.
-Duplicate processing is avoided by immediately moving files out of the pending state.
-Metadata such as video ID and URLs is generated after upload and treated as authoritative.
+- titles.txt acts as a persistent metadata queue.
+- Google Drive folders represent processing state.
+- Successful completion advances both Drive and repository state.
+- Duplicate processing is prevented by state transitions only after success.
 
 ## Security Considerations
-Secrets and OAuth tokens are never exposed to the frontend.
-All credentials are stored securely using GitHub Secrets.
-API scopes are minimized to only what is required for uploads and metadata access.
+- OAuth tokens are generated offline and stored as GitHub Secrets.
+- No credentials are committed to the repository.
+- Minimal required OAuth scopes are used.
+- Secrets are injected only at runtime.
+- No interactive authentication during execution.
 
 ## Tech Stack
+- Python 3.11
+- Google API Python Client
 - GitHub Actions
-- Python
 - Google Drive API
-- YouTube Data API
+- YouTube Data API v3
+- OAuth 2.0
 
 ## Roadmap
-- Retry and backoff handling for failed uploads
-- Persistent metadata storage
-- Basic access control
-- Monitoring and logging improvements
+- Multi-video batch runs
+- Multi-channel support
+- Per-video scheduling configuration
+- Failure notifications
+- Metadata validation tooling
 
 ## Final Notes
-The system prioritizes reliability through clear state transitions.
-Each component is loosely coupled and replaceable without redesigning the workflow.
+The system is designed for predictable execution and easy auditing.
+All state transitions are explicit and observable.
+The architecture favors simplicity, reliability, and operational clarity.
